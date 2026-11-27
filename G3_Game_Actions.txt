@@ -1,0 +1,66 @@
+
+static void resetBoardAnim() {
+    for (int r = 0; r < 2; r++)
+        for (int i = 0; i < 8; i++) {
+            popT[r][i] = 1.0f;
+            prevFilled[r][i] = false;
+        }
+}
+
+static void runAction(int kind, int arg, const string& text) {
+    int before = eng->getDetective().getCredibility();
+    try {
+        string msg = "";
+        if (kind == 0) {
+            msg = eng->doVisit(arg);
+        } else if (kind == 1) {
+            msg = eng->doInterview(arg);
+            // each character class prints its own line; catch it from cout
+            ostringstream cap;
+            streambuf* old = cout.rdbuf(cap.rdbuf());
+            eng->getPerson(arg)->display();
+            cout.rdbuf(old);
+            string line = cap.str();
+            while (!line.empty() && (line[line.size() - 1] == '\n' || line[line.size() - 1] == '\r'))
+                line.erase(line.size() - 1);
+            addLog(line);
+        } else if (kind == 2) {
+            msg = eng->doFormWord(arg, text);
+        } else {
+            msg = eng->doAccuse(arg);
+        }
+        addLog(msg);
+        pushToast(msg.substr(0, msg.find('\n')), false);
+    } catch (GameException& e) {
+        pushToast(e.what(), true);
+        addLog("! " + e.what());
+        eng->punish(e.getPenalty());
+        shake = 0.4f;
+    }
+    eng->punish(0);   // checks the lose conditions
+    int after = eng->getDetective().getCredibility();
+    if (after < before)
+        addFloat("-" + toStr(before - after), 760, 56, C_RED);
+    accuseMode = false;
+}
+
+static void startGame() {
+    try {
+        eng->beginGame(playerName, todayDate);
+        for (int i = 0; i < 6; i++)
+            logLines[i] = "";
+        for (int i = 0; i < 4; i++)
+            toasts[i].life = 0;
+        resetBoardAnim();
+        shownCred = (float)eng->getStartCred();
+        accuseMode = false;
+        modal = MOD_NONE;
+        confActive = false;
+        addLog("A culprit has been chosen. Find the letters!");
+        goScreen(SCR_PLAY);
+    } catch (GameException& e) {
+        menuError = e.what();
+        pushToast(e.what(), true);
+    }
+}
+

@@ -1,0 +1,203 @@
+
+static void drawTopBar() {
+    DrawRectangle(0, 0, 1280, 66, C_PANEL);
+    DrawText("THE LOCKER HEIST", 20, 12, 26, C_GOLD);
+    DrawText(("Detective " + pretty(eng->getDetective().getName())).c_str(), 22, 42, 16, C_DIM);
+
+    int cred = eng->getDetective().getCredibility();
+    int startCred = eng->getStartCred();
+    shownCred += ((float)cred - shownCred) * 0.12f;
+    float frac = shownCred / (float)startCred;
+    if (frac < 0) frac = 0;
+    if (frac > 1) frac = 1;
+    Color bar = frac > 0.6f ? C_GREEN : (frac > 0.3f ? C_GOLD : C_RED);
+    DrawText("CREDIBILITY", 420, 10, 14, C_DIM);
+    Rectangle back = { 420, 30, 360, 22 };
+    DrawRectangleRounded(back, 0.5f, 8, C_BG);
+    if (frac > 0.01f)
+        DrawRectangleRounded(Rectangle{ 420, 30, 360 * frac, 22 }, 0.5f, 8, bar);
+    DrawText((toStr(cred) + "/" + toStr(startCred)).c_str(), 790, 32, 18, C_TEXT);
+
+    int turns = eng->getDetective().getTurns();
+    int maxT = eng->getMaxTurns();
+    DrawText("TURNS", 940, 10, 14, C_DIM);
+    float tf = (float)turns / (float)maxT;
+    DrawRectangleRounded(Rectangle{ 940, 30, 220, 22 }, 0.5f, 8, C_BG);
+    if (tf > 0.01f)
+        DrawRectangleRounded(Rectangle{ 940, 30, 220 * (tf > 1 ? 1 : tf), 22 }, 0.5f, 8, tf > 0.8f ? C_RED : C_BLUE);
+    DrawText((toStr(turns) + "/" + toStr(maxT)).c_str(), 1172, 32, 18, C_TEXT);
+}
+
+static void drawCottage(bool active) {
+    panel(Rectangle{ 20, 80, 610, 400 }, "THE COTTAGE  (click a room to search it)");
+    const Cottage& cot = eng->getCottage();
+
+    // index -> position on the floor plan
+    Rectangle rooms[7] = {
+        { 40, 140, 176, 90 }, { 237, 140, 176, 90 }, { 434, 140, 176, 90 },   // upstairs
+        { 40, 372, 570, 90 },                                                 // garden
+        { 40, 255, 176, 90 }, { 237, 255, 176, 90 }, { 434, 255, 176, 90 }    // downstairs
+    };
+    DrawText("UPSTAIRS", 40, 124, 12, C_DIM);
+    DrawText("DOWNSTAIRS", 40, 239, 12, C_DIM);
+    DrawText("OUTSIDE", 40, 356, 12, C_DIM);
+
+    for (int i = 0; i < cot.getLocationCount() && i < 7; i++) {
+        const Location& loc = cot.getLocation(i);
+        bool searched = cot.isSearched(i);
+        Rectangle r = rooms[i];
+        bool hover = active && hovering(r);
+        Color base = (i == 3) ? Color{ 36, 84, 60, 255 } : C_PANEL2;
+        if (searched)
+            base = Color{ 36, 96, 78, 255 };
+        if (hover)
+            base = lighten(base, 22);
+        DrawRectangleRounded(r, 0.12f, 8, base);
+        DrawRectangleLinesEx(r, 2, searched ? C_GREEN : (hover ? WHITE : Color{ 70, 80, 120, 255 }));
+        textC(loc.locName, r.x + r.width / 2, r.y + 12, 22, C_TEXT);
+        if (searched) {
+            float bx = r.x + r.width / 2 - 36;
+            DrawCircle((int)bx + 4, (int)(r.y + 62), 18, C_GOLD);
+            char ch[2] = { loc.letterClueLoc, 0 };
+            textC(ch, bx + 4, r.y + 49, 26, C_BG);
+            DrawText(("Word 1, slot " + toStr(loc.boardPosLoc)).c_str(), (int)bx + 30, (int)(r.y + 55), 14, C_TEXT);
+        } else {
+            textC("not searched", r.x + r.width / 2, r.y + 56, 16, C_DIM);
+        }
+        if (i == 2)
+            drawLocker(r.x + r.width - 28, r.y + 8, 0.5f);   // the locker is in the study
+        if (hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && modal == MOD_NONE) {
+            if (searched) {
+                modal = MOD_ROOM;
+                modalArg = i;
+                modalText = "You already searched the " + loc.locName + ". Search again? (uses a turn)";
+            } else {
+                runAction(0, i, "");
+            }
+        }
+    }
+}
+
+static void drawPeople(bool active) {
+    panel(Rectangle{ 650, 80, 610, 400 }, accuseMode ? "WHO DID IT?  (click the culprit)" : "THE PEOPLE  (click to interview)");
+    int cred = eng->getDetective().getCredibility();
+    for (int i = 0; i < eng->getPeopleCount(); i++) {
+        const Character* p = eng->getPerson(i);
+        int col = i % 4, row = i / 4;
+        Rectangle r = { 663.0f + col * 149.0f, 122.0f + row * 178.0f, 137, 166 };
+        bool interviewed = p->isInterviewed();
+        bool locked = !interviewed && cred < p->getMinCredibility();
+        bool canPick = active && (!accuseMode || i >= 1);
+        bool hover = canPick && hovering(r);
+        Color base = C_PANEL2;
+        if (interviewed) base = Color{ 36, 90, 76, 255 };
+        if (accuseMode && i >= 1) base = Color{ 90, 40, 50, 255 };
+        if (hover) base = lighten(base, 22);
+        DrawRectangleRounded(r, 0.1f, 8, base);
+        DrawRectangleLinesEx(r, 2, hover ? WHITE : (interviewed ? C_GREEN : Color{ 70, 80, 120, 255 }));
+        drawAvatar(p->getRole(), r.x + r.width / 2, r.y + 46, 1.0f, locked);
+        textC(p->getName(), r.x + r.width / 2, r.y + 104, 15, C_TEXT);
+        textC(pretty(p->getRole()), r.x + r.width / 2, r.y + 124, 13, C_DIM);
+        if (interviewed) {
+            Clue c = p->getClue();
+            textC(string("got ") + c.clueLetter + "  (W2 #" + toStr(c.cluePosition) + ")", r.x + r.width / 2, r.y + 144, 14, C_GREEN);
+        } else if (locked) {
+            textC("needs " + toStr(p->getMinCredibility()) + " cred", r.x + r.width / 2, r.y + 144, 14, C_RED);
+        } else {
+            textC(accuseMode ? "accuse!" : "talk", r.x + r.width / 2, r.y + 144, 14, accuseMode ? C_RED : C_BLUE);
+        }
+
+        if (hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && modal == MOD_NONE) {
+            if (accuseMode) {
+                modal = MOD_ACCUSE;
+                modalArg = i;
+                modalText = "Accuse " + p->getName() + "? A wrong accusation costs credibility.";
+            } else if (interviewed) {
+                modal = MOD_PERSON;
+                modalArg = i;
+                modalText = "You already interviewed " + p->getName() + ". Ask again? (uses a turn)";
+            } else if (locked) {
+                modal = MOD_PERSON;
+                modalArg = i;
+                modalText = p->getName() + " will not talk (needs " + toStr(p->getMinCredibility()) + " credibility). Try anyway? It costs a turn and credibility.";
+            } else {
+                runAction(1, i, "");
+            }
+        }
+    }
+}
+
+static void drawBoard() {
+    panel(Rectangle{ 20, 495, 610, 205 }, "SCRABBLE BOARD");
+    const Scrabble& sc = eng->getScrabble();
+    for (int r = 0; r < 2; r++) {
+        WordRow wr = (r == 0) ? WORD1 : WORD2;
+        int len = sc.getLength(wr);
+        float y = (r == 0) ? 550.0f : 628.0f;
+        bool solved = sc.isSolved(wr);
+        bool full = sc.isRowFull(wr);
+        DrawText(r == 0 ? "WORD 1  (7 letters - places)" : "WORD 2  (8 letters - people)", 40, (int)y - 20, 14, C_DIM);
+        if (solved)
+            DrawText("SOLVED", 480, (int)y - 20, 14, C_GREEN);
+        else if (full)
+            DrawText("COMPLETE - press Form Word", 400, (int)y - 20, 14, C_GOLD);
+        for (int i = 0; i < len; i++) {
+            Tile t = sc.getTile(wr, i);
+            if (t.filled && !prevFilled[r][i])
+                popT[r][i] = 0.0f;
+            prevFilled[r][i] = t.filled;
+            if (popT[r][i] < 1.0f) {
+                popT[r][i] += GetFrameTime() * 2.6f;
+                if (popT[r][i] > 1.0f) popT[r][i] = 1.0f;
+            }
+            float sc2 = 1.0f + 0.35f * sinf(popT[r][i] * 3.14159f);
+            float w = 56 * sc2;
+            float x = 40.0f + i * 62.0f + (56 - w) / 2;
+            float yy = y + (56 - w) / 2;
+            Color fill = t.filled ? (solved ? Color{ 50, 150, 100, 255 } : Color{ 240, 190, 70, 255 }) : C_BG;
+            DrawRectangleRounded(Rectangle{ x, yy, w, w }, 0.18f, 8, fill);
+            DrawRectangleLinesEx(Rectangle{ x, yy, w, w }, 2, t.filled ? WHITE : Color{ 70, 80, 120, 255 });
+            DrawText(toStr(i + 1).c_str(), (int)x + 5, (int)yy + 4, 11, t.filled ? Color{ 90, 60, 0, 255 } : C_DIM);
+            if (t.filled) {
+                char ch[2] = { t.tileLetter, 0 };
+                textC(ch, x + w / 2, yy + w / 2 - 17, 34, solved ? WHITE : C_BG);
+            }
+        }
+    }
+}
+
+static void drawControls(bool active) {
+    panel(Rectangle{ 650, 495, 610, 205 }, "ACTIONS");
+    const Scrabble& sc = eng->getScrabble();
+    if (button(Rectangle{ 665, 528, 138, 44 }, "Form Word 1", C_BLUE, active, 18)) {
+        if (sc.isSolved(WORD1)) pushToast("Word 1 is already solved.", false);
+        else if (!sc.isRowFull(WORD1)) pushToast("Word 1 still has empty slots.", true);
+        else { modal = MOD_WORD; modalArg = 1; wordInput = ""; }
+    }
+    if (button(Rectangle{ 813, 528, 138, 44 }, "Form Word 2", C_BLUE, active, 18)) {
+        if (sc.isSolved(WORD2)) pushToast("Word 2 is already solved.", false);
+        else if (!sc.isRowFull(WORD2)) pushToast("Word 2 still has empty slots.", true);
+        else { modal = MOD_WORD; modalArg = 2; wordInput = ""; }
+    }
+    if (button(Rectangle{ 961, 528, 138, 44 }, accuseMode ? "Cancel" : "Accuse", C_RED, active, 18)) {
+        if (accuseMode) accuseMode = false;
+        else if (!sc.bothSolved()) pushToast("Solve both words before you accuse someone.", true);
+        else accuseMode = true;
+    }
+    if (button(Rectangle{ 1109, 528, 130, 44 }, "Quit", C_PANEL2, active, 18)) {
+        modal = MOD_QUIT;
+        modalText = "Leave this case? Your progress will be lost.";
+    }
+
+    DrawRectangleRounded(Rectangle{ 665, 584, 580, 106 }, 0.08f, 8, C_BG);
+    for (int i = 0; i < 6; i++) {
+        Color c = (i == 5) ? C_TEXT : Color{ 120, 128, 160, 255 };
+        if (!logLines[i].empty() && logLines[i][0] == '!')
+            c = (i == 5) ? C_RED : Color{ 150, 80, 80, 255 };
+        string l = logLines[i];
+        if (MeasureText(l.c_str(), 14) > 560)
+            l = l.substr(0, 78) + "...";
+        DrawText(l.c_str(), 676, 590 + i * 16, 14, c);
+    }
+}
+

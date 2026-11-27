@@ -1,0 +1,67 @@
+
+static void drawAvatar(const string& role, float cx, float cy, float s, bool locked) {
+    Color skin = { 236, 190, 150, 255 };
+    Color shirt = { 120, 120, 140, 255 };
+    if (role == "Victim") { shirt = Color{ 190, 190, 205, 255 }; skin = Color{ 225, 205, 190, 255 }; }
+    else if (role == "Cook") shirt = Color{ 240, 240, 240, 255 };
+    else if (role == "Guard") shirt = Color{ 50, 74, 130, 255 };
+    else if (role == "Servant") { shirt = Color{ 130, 96, 62, 255 }; skin = Color{ 200, 150, 110, 255 }; }
+    else if (role == "Child") shirt = Color{ 244, 170, 60, 255 };
+    else if (role == "Partner_1") { shirt = Color{ 156, 64, 124, 255 }; skin = Color{ 245, 205, 170, 255 }; }
+    else if (role == "Partner_2") { shirt = Color{ 56, 124, 146, 255 }; skin = Color{ 215, 165, 125, 255 }; }
+    else if (role == "PA") { shirt = Color{ 44, 44, 58, 255 }; skin = Color{ 190, 140, 100, 255 }; }
+
+    if (role == "Child") {
+        s *= 0.85f;
+        cy += 8;
+    }
+    float a = locked ? 0.45f : 1.0f;
+    DrawRectangleRounded(Rectangle{ cx - 24 * s, cy + 6 * s, 48 * s, 40 * s }, 0.5f, 8, Fade(shirt, a));
+    DrawCircle((int)cx, (int)(cy - 8 * s), 18 * s, Fade(skin, a));
+
+    // eyes and mouth
+    if (role == "Victim") {
+        DrawLineEx(Vector2{ cx - 9 * s, cy - 14 * s }, Vector2{ cx - 3 * s, cy - 8 * s }, 2, Fade(BLACK, a));
+        DrawLineEx(Vector2{ cx - 3 * s, cy - 14 * s }, Vector2{ cx - 9 * s, cy - 8 * s }, 2, Fade(BLACK, a));
+        DrawLineEx(Vector2{ cx + 3 * s, cy - 14 * s }, Vector2{ cx + 9 * s, cy - 8 * s }, 2, Fade(BLACK, a));
+        DrawLineEx(Vector2{ cx + 9 * s, cy - 14 * s }, Vector2{ cx + 3 * s, cy - 8 * s }, 2, Fade(BLACK, a));
+    } else {
+        DrawCircle((int)(cx - 6 * s), (int)(cy - 11 * s), 2.5f * s, Fade(BLACK, a));
+        DrawCircle((int)(cx + 6 * s), (int)(cy - 11 * s), 2.5f * s, Fade(BLACK, a));
+    }
+    if (role == "Child")
+        DrawCircle((int)cx, (int)(cy - 1 * s), 3 * s, Fade(Color{ 120, 40, 40, 255 }, a));   // worried "o" mouth
+    else
+        DrawLineEx(Vector2{ cx - 6 * s, cy - 2 * s }, Vector2{ cx + 6 * s, cy - 2 * s }, 2, Fade(Color{ 120, 40, 40, 255 }, a));
+
+    // little extras per role
+    if (role == "Cook") {
+        DrawRectangleRounded(Rectangle{ cx - 14 * s, cy - 40 * s, 28 * s, 20 * s }, 0.6f, 8, Fade(WHITE, a));
+        DrawRectangle((int)(cx - 17 * s), (int)(cy - 26 * s), (int)(34 * s), (int)(7 * s), Fade(WHITE, a));
+    } else if (role == "Guard") {
+        DrawRectangle((int)(cx - 18 * s), (int)(cy - 30 * s), (int)(36 * s), (int)(12 * s), Fade(Color{ 30, 44, 90, 255 }, a));
+        DrawRectangle((int)(cx - 4 * s), (int)(cy - 20 * s), (int)(26 * s), (int)(4 * s), Fade(Color{ 20, 30, 64, 255 }, a));
+    } else if (role == "PA") {
+        DrawRectangle((int)(cx - 3 * s), (int)(cy + 6 * s), (int)(6 * s), (int)(26 * s), Fade(C_RED, a));
+    } else if (role == "Servant") {
+        DrawRectangle((int)(cx - 10 * s), (int)(cy + 10 * s), (int)(20 * s), (int)(4 * s), Fade(WHITE, a));
+    } else if (role == "Partner_1" || role == "Partner_2") {
+        DrawRectangle((int)(cx - 8 * s), (int)(cy + 8 * s), (int)(16 * s), (int)(5 * s), Fade(WHITE, a));
+    }
+
+    if (locked) {
+        // padlock
+        DrawRectangle((int)(cx - 11), (int)(cy + 4), 22, 18, C_GOLD);
+        DrawRectangleLinesEx(Rectangle{ cx - 7, cy - 8, 14, 14 }, 3, C_GOLD);
+        DrawCircle((int)cx, (int)(cy + 13), 3, C_BG);
+    }
+}
+
+static void drawLocker(float x, float y, float s) {
+    DrawRectangleRounded(Rectangle{ x, y, 40 * s, 52 * s }, 0.15f, 6, Color{ 120, 130, 150, 255 });
+    DrawRectangleLinesEx(Rectangle{ x, y, 40 * s, 52 * s }, 2, C_GOLD);
+    DrawCircle((int)(x + 20 * s), (int)(y + 22 * s), 9 * s, Color{ 70, 76, 96, 255 });
+    DrawCircle((int)(x + 20 * s), (int)(y + 22 * s), 3 * s, C_GOLD);
+    DrawRectangle((int)(x + 14 * s), (int)(y + 40 * s), (int)(12 * s), (int)(4 * s), C_GOLD);
+}
+

@@ -1,0 +1,163 @@
+
+#define _CRT_SECURE_NO_WARNINGS
+#include "heist.h"      // keep this include before raylib.h (raylib defines macros like RED)
+#include "raylib.h"
+#include <cmath>
+#include <ctime>
+#include <sstream>
+
+// ---------------- colours ----------------
+static const Color C_BG = { 16, 20, 36, 255 };
+static const Color C_PANEL = { 28, 34, 58, 255 };
+static const Color C_PANEL2 = { 40, 48, 80, 255 };
+static const Color C_TEXT = { 236, 239, 250, 255 };
+static const Color C_DIM = { 148, 156, 186, 255 };
+static const Color C_GOLD = { 255, 196, 61, 255 };
+static const Color C_GREEN = { 66, 190, 120, 255 };
+static const Color C_RED = { 232, 82, 82, 255 };
+static const Color C_BLUE = { 82, 150, 245, 255 };
+
+// ---------------- state ----------------
+enum Screen { SCR_MENU, SCR_NEW, SCR_PLAY, SCR_LEADER, SCR_INFO, SCR_RESULT };
+enum ModalType { MOD_NONE, MOD_ROOM, MOD_PERSON, MOD_WORD, MOD_ACCUSE, MOD_QUIT };
+
+static GameEngine* eng = 0;
+static Screen screen = SCR_MENU;
+static float fadeIn = 1.0f;
+static float clockT = 0.0f;
+static float shownCred = 100.0f;
+static float shake = 0.0f;
+
+static string playerName = "";
+static string todayDate = "";
+static string menuError = "";
+
+static ModalType modal = MOD_NONE;
+static int modalArg = 0;
+static string modalText = "";
+static string wordInput = "";
+static bool accuseMode = false;
+
+static string logLines[6];
+
+struct Toast { string text; float life; bool bad; };
+static Toast toasts[4];
+
+struct FloatText { string text; float x; float y; float life; Color col; };
+static FloatText floats[6];
+
+struct Confetti { float x, y, vx, vy, rot, vr; Color c; };
+static Confetti conf[200];
+static bool confActive = false;
+
+static float popT[2][8];
+static bool prevFilled[2][8];
+
+static unsigned int rndState = 7;
+static float rnd01() {
+    rndState = rndState * 1103515245u + 12345u;
+    return (float)((rndState / 65536u) % 10000u) / 10000.0f;
+}
+
+// ---------------- small helpers ----------------
+static Color lighten(Color c, int amt) {
+    int r = c.r + amt, g = c.g + amt, b = c.b + amt;
+    if (r > 255) r = 255;
+    if (g > 255) g = 255;
+    if (b > 255) b = 255;
+    return Color{ (unsigned char)r, (unsigned char)g, (unsigned char)b, c.a };
+}
+
+static bool hovering(Rectangle r) { return CheckCollisionPointRec(GetMousePosition(), r); }
+
+static void textC(const string& s, float cx, float y, int size, Color c) {
+    int w = MeasureText(s.c_str(), size);
+    DrawText(s.c_str(), (int)(cx - w / 2.0f), (int)y, size, c);
+}
+
+static string pretty(const string& s) {
+    string r = s;
+    for (int i = 0; i < (int)r.size(); i++)
+        if (r[i] == '_')
+            r[i] = ' ';
+    return r;
+}
+
+static bool button(Rectangle r, const string& label, Color base, bool active = true, int size = 20) {
+    bool hover = active && hovering(r);
+    Color c = !active ? Color{ 52, 56, 76, 255 } : (hover ? lighten(base, 28) : base);
+    DrawRectangleRounded(Rectangle{ r.x + 2, r.y + 4, r.width, r.height }, 0.3f, 8, Color{ 0, 0, 0, 90 });
+    DrawRectangleRounded(r, 0.3f, 8, c);
+    if (hover)
+        DrawRectangleLinesEx(r, 2, WHITE);
+    textC(label, r.x + r.width / 2, r.y + (r.height - size) / 2, size, active ? WHITE : C_DIM);
+    return hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+}
+
+static void panel(Rectangle r, const string& title) {
+    DrawRectangleRounded(Rectangle{ r.x + 3, r.y + 5, r.width, r.height }, 0.04f, 8, Color{ 0, 0, 0, 90 });
+    DrawRectangleRounded(r, 0.04f, 8, C_PANEL);
+    DrawText(title.c_str(), (int)r.x + 16, (int)r.y + 10, 18, C_GOLD);
+}
+
+static void pushToast(const string& t, bool bad) {
+    for (int i = 3; i > 0; i--)
+        toasts[i] = toasts[i - 1];
+    toasts[0].text = t;
+    toasts[0].life = 2.2f;
+    toasts[0].bad = bad;
+}
+
+static void addFloat(const string& t, float x, float y, Color c) {
+    for (int i = 5; i > 0; i--)
+        floats[i] = floats[i - 1];
+    floats[0].text = t;
+    floats[0].x = x;
+    floats[0].y = y;
+    floats[0].life = 1.6f;
+    floats[0].col = c;
+}
+
+static void addLog(const string& msg) {
+    string part = "";
+    for (int i = 0; i <= (int)msg.size(); i++) {
+        if (i == (int)msg.size() || msg[i] == '\n') {
+            if (!part.empty()) {
+                for (int k = 0; k < 5; k++)
+                    logLines[k] = logLines[k + 1];
+                logLines[5] = part;
+            }
+            part = "";
+        } else {
+            part += msg[i];
+        }
+    }
+}
+
+static void goScreen(Screen s) {
+    screen = s;
+    fadeIn = 1.0f;
+}
+
+static void startConfetti() {
+    confActive = true;
+    for (int i = 0; i < 200; i++) {
+        conf[i].x = rnd01() * 1280.0f;
+        conf[i].y = -rnd01() * 600.0f;
+        conf[i].vx = (rnd01() - 0.5f) * 80.0f;
+        conf[i].vy = 120.0f + rnd01() * 220.0f;
+        conf[i].rot = rnd01() * 360.0f;
+        conf[i].vr = (rnd01() - 0.5f) * 400.0f;
+        int k = (int)(rnd01() * 5.0f);
+        Color cols[5] = { C_GOLD, C_GREEN, C_BLUE, C_RED, Color{ 200, 120, 255, 255 } };
+        conf[i].c = cols[k % 5];
+    }
+}
+
+static string todayString() {
+    time_t t = time(0);
+    tm* lt = localtime(&t);
+    char buf[16];
+    strftime(buf, sizeof(buf), "%d-%m-%y", lt);
+    return string(buf);
+}

@@ -1,0 +1,193 @@
+
+static void drawFallingLetters(float alpha) {
+    for (int i = 0; i < 34; i++) {
+        float x = (float)((i * 97) % 1280);
+        float y = fmodf(clockT * (14.0f + (float)(i % 4) * 8.0f) + (float)(i * 61), 760.0f) - 20.0f;
+        char ch[2] = { (char)('A' + (i * 7) % 26), 0 };
+        DrawText(ch, (int)x, (int)y, 22 + (i % 3) * 6, Fade(C_GOLD, alpha));
+    }
+}
+
+static void screenMenu() {
+    drawFallingLetters(0.10f);
+    textC("THE LOCKER HEIST", 642, 62, 74, Color{ 0, 0, 0, 120 });
+    textC("THE LOCKER HEIST", 640, 58, 74, C_GOLD);
+    textC("Collect the letters. Solve the words. Catch the thief.", 640, 148, 22, C_DIM);
+
+    // the safe
+    float cx = 300, cy = 400;
+    DrawRectangleRounded(Rectangle{ cx - 135, cy - 160, 270, 320 }, 0.08f, 8, Color{ 92, 100, 124, 255 });
+    DrawRectangleRounded(Rectangle{ cx - 115, cy - 140, 230, 280 }, 0.08f, 8, Color{ 58, 64, 86, 255 });
+    DrawRectangleLinesEx(Rectangle{ cx - 135, cy - 160, 270, 320 }, 4, C_GOLD);
+    DrawCircle((int)cx, (int)cy, 82, Color{ 40, 44, 62, 255 });
+    DrawCircle((int)cx, (int)cy, 74, Color{ 112, 120, 144, 255 });
+    float ang = clockT * 25.0f;
+    for (int i = 0; i < 12; i++) {
+        float a = (ang + i * 30.0f) * 3.14159f / 180.0f;
+        DrawLineEx(Vector2{ cx + cosf(a) * 56, cy + sinf(a) * 56 }, Vector2{ cx + cosf(a) * 70, cy + sinf(a) * 70 }, 3, C_GOLD);
+    }
+    DrawCircle((int)cx, (int)cy, 26, C_GOLD);
+    DrawCircle((int)cx, (int)cy, 10, Color{ 40, 44, 62, 255 });
+    DrawRectangleRounded(Rectangle{ cx + 98, cy - 20, 18, 40 }, 0.5f, 6, C_GOLD);
+
+    float bx = 700, bw = 400, bh = 62;
+    if (button(Rectangle{ bx, 240, bw, bh }, "New Game", C_GREEN, true, 26)) {
+        playerName = "";
+        todayDate = todayString();
+        menuError = "";
+        goScreen(SCR_NEW);
+    }
+    if (button(Rectangle{ bx, 320, bw, bh }, "Leader Board", C_BLUE, true, 26))
+        goScreen(SCR_LEADER);
+    if (button(Rectangle{ bx, 400, bw, bh }, "Rules and About", Color{ 150, 100, 220, 255 }, true, 26))
+        goScreen(SCR_INFO);
+    if (button(Rectangle{ bx, 480, bw, bh }, "Exit", C_RED, true, 26))
+        CloseWindow();
+}
+
+static void screenNew() {
+    drawFallingLetters(0.08f);
+    Rectangle box = { 340, 170, 600, 380 };
+    panel(box, "NEW GAME");
+    textC("Enter your detective name", 640, 230, 26, C_TEXT);
+
+    // typing
+    int ch = GetCharPressed();
+    while (ch > 0) {
+        if (ch >= 32 && ch < 127 && playerName.size() < 14)
+            playerName += (ch == ' ') ? '_' : (char)ch;   // spaces become underscores
+        ch = GetCharPressed();
+    }
+    if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && !playerName.empty())
+        playerName.erase(playerName.size() - 1);
+
+    Rectangle field = { 400, 280, 480, 56 };
+    DrawRectangleRounded(field, 0.2f, 8, C_BG);
+    DrawRectangleLinesEx(field, 2, C_GOLD);
+    string shown = playerName;
+    if (((int)(clockT * 2)) % 2 == 0)
+        shown += "|";
+    DrawText(shown.c_str(), 416, 296, 28, C_TEXT);
+    textC("Spaces turn into underscores (_).  Date: " + todayDate, 640, 350, 16, C_DIM);
+    if (!menuError.empty())
+        textC(menuError, 640, 380, 18, C_RED);
+
+    bool go = button(Rectangle{ 400, 430, 230, 58 }, "Start", C_GREEN, true, 24) || IsKeyPressed(KEY_ENTER);
+    if (go) {
+        if (playerName.empty()) {
+            pushToast("Name cannot be empty.", true);
+            menuError = "Name cannot be empty.";
+        } else {
+            startGame();
+        }
+    }
+    if (button(Rectangle{ 650, 430, 230, 58 }, "Back", C_PANEL2, true, 24) || IsKeyPressed(KEY_ESCAPE))
+        goScreen(SCR_MENU);
+}
+
+static int splitBar(const string& line, string out[], int maxF) {
+    int n = 0;
+    string cur = "";
+    bool started = false;
+    for (int i = 0; i < (int)line.size(); i++) {
+        if (line[i] == '|') {
+            if (started && n < maxF) {
+                int a = 0, b = (int)cur.size();
+                while (a < b && cur[a] == ' ') a++;
+                while (b > a && cur[b - 1] == ' ') b--;
+                out[n++] = cur.substr(a, b - a);
+            }
+            started = true;
+            cur = "";
+        } else {
+            cur += line[i];
+        }
+    }
+    return n;
+}
+
+static void screenLeader() {
+    drawFallingLetters(0.06f);
+    Rectangle box = { 60, 50, 1160, 620 };
+    panel(box, "LEADER BOARD");
+    string rows[200];
+    int n = 0;
+    try {
+        n = eng->getLeaderBoard()->getRows(rows, 200);
+    } catch (GameException& e) {
+        textC(e.what(), 640, 300, 24, C_RED);
+    }
+    float xs[6] = { 90, 360, 500, 650, 800, 1090 };
+    const char* heads[6] = { "Detective", "Result", "Credibility", "Turns left", "Culprit", "Date" };
+    for (int i = 0; i < 6; i++)
+        DrawText(heads[i], (int)xs[i], 96, 20, C_GOLD);
+    DrawRectangle(80, 124, 1120, 2, C_GOLD);
+    int shownRows = 0;
+    for (int r = n - 1; r >= 1 && shownRows < 15; r--) {
+        string f[6];
+        if (splitBar(rows[r], f, 6) != 6)
+            continue;
+        float y = 136.0f + shownRows * 32.0f;
+        if (shownRows % 2 == 0)
+            DrawRectangle(80, (int)y - 2, 1120, 30, Color{ 36, 42, 70, 255 });
+        for (int i = 0; i < 6; i++) {
+            Color c = C_TEXT;
+            if (i == 1)
+                c = (f[1] == "WIN") ? C_GREEN : C_RED;
+            DrawText(pretty(f[i]).c_str(), (int)xs[i], (int)y + 3, 20, c);
+        }
+        shownRows++;
+    }
+    if (shownRows == 0)
+        textC("No games played yet. Solve a case first!", 640, 300, 26, C_DIM);
+    if (button(Rectangle{ 540, 612, 200, 44 }, "Back", C_PANEL2, true, 22) || IsKeyPressed(KEY_ESCAPE))
+        goScreen(SCR_MENU);
+}
+
+static void screenInfo() {
+    drawFallingLetters(0.06f);
+    panel(Rectangle{ 60, 50, 560, 620 }, "RULES");
+    const char* rules[] = {
+        "Visit 7 places: each gives 1 letter of Word 1.",
+        "Interview 8 people: each gives 1 letter of Word 2.",
+        "Letters go to their numbered slot on the board.",
+        "When a row is full, press Form Word and type it.",
+        "Both words together point to the culprit.",
+        "Then press Accuse and click the culprit.",
+        "",
+        "Credibility starts at 100. Turns: 25.",
+        "Wrong word: -10.  Wrong accusation: -5.",
+        "Talking to a locked person: -5 and a turn.",
+        "",
+        "People only talk if credibility is high enough:",
+        "Victim 80 | Child 75 | Partners 50 | PA 35",
+        "Cook, Guard and Servant talk any time.",
+        "",
+        "Win: accuse the right person.",
+        "Lose: credibility 0 or no turns left."
+    };
+    for (int i = 0; i < 17; i++)
+        DrawText(rules[i], 84, 96 + i * 30, 19, C_TEXT);
+
+    panel(Rectangle{ 650, 50, 570, 620 }, "ABOUT");
+    string about = "";
+    try {
+        about = loadTextFile("about.txt");
+    } catch (GameException& e) {
+        about = e.what();
+    }
+    string line = "";
+    int row = 0;
+    for (int i = 0; i <= (int)about.size(); i++) {
+        if (i == (int)about.size() || about[i] == '\n') {
+            DrawText(line.c_str(), 674, 96 + row * 28, 18, C_TEXT);
+            row++;
+            line = "";
+        } else {
+            line += about[i];
+        }
+    }
+    if (button(Rectangle{ 540, 616, 200, 44 }, "Back", C_PANEL2, true, 22) || IsKeyPressed(KEY_ESCAPE))
+        goScreen(SCR_MENU);
+}
+
